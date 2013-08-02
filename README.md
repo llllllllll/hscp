@@ -25,7 +25,7 @@ Currently you need to have an ssh key and the password field does not work.
 Starting
 --------
 
-Launch it with $ hscp <path_to_config>
+Launch it with $ hscp path_to_config
 Currently you must stop polling with ^c, but the terminal will print the scp out
 and other useful information. Currently, it does not push the source directory at
 startup, so you need to edit all the files in the directory for them to get 
