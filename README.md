@@ -39,6 +39,5 @@ TODO
 ----
 
 - Get directories working properly
-- Add regex ignores
 - Fix emacs file buffers causing crashes (probably with regex ignores)
 - Possibly add printing options with a -v or --verbose flag

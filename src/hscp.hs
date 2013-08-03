@@ -43,17 +43,14 @@ hscp_start_polling config_path = do
     setCurrentDirectory dir
     ts <- mapM getFileStatus cs
     let polls = map mk_poll_node $ 
-                zip3 cs (map isDirectory ts) (map accessTime ts)
+                zip3 cs (map isDirectory ts) (map modificationTime ts)
+    putStrLn "Innitial push!"
     mapM_ (\p -> if is_directory p 
                  then let a = file_name p in
-                      putStrLn ("Innitial push on  dir " ++ a 
-                                ++ ", pushing!") >>
                       system ("scp -r " ++ a ++ " " 
                               ++ user_name ++ "@" ++ host ++ ":" 
                               ++ clone_dir ++ a) >> return ()
                  else let a = file_name p in
-                      putStrLn ("Innitial push on file " ++ a
-                                ++ ", pushing!") >>
                       system ("scp -r " ++ a ++ " " 
                               ++ user_name ++ "@" ++ host ++ ":" 
                               ++ clone_dir ++ a) >> return ()) polls
@@ -67,7 +64,7 @@ hscp_poll user_name pass host dir clone_dir poll_int ignored polls = do
           <$> getDirectoryContents dir
     ts <- mapM getFileStatus cs
     let polls' = map mk_poll_node 
-                 $ zip3 cs (map isDirectory ts) (map accessTime ts)
+                 $ zip3 cs (map isDirectory ts) (map modificationTime ts)
     mapM_ (\(p,p') -> 
                if edit_time p /= edit_time p' then 
                    if is_directory p 
