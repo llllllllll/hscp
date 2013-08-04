@@ -3,6 +3,7 @@
 import System.Environment
 import System.Directory
 import System.Process
+import System.FilePath
 import System.Posix.Files
 import System.Posix.Process
 import System.Exit
@@ -13,81 +14,94 @@ import Control.Applicative
 import Text.Regex.Base.RegexLike
 import Text.Regex.TDFA
 import Foreign.C.Types
+import Data.Maybe
+import Data.List
 
 data PollNode = PollNode { file_name    :: FilePath
-                         , is_directory :: Bool
                          , edit_time    :: Foreign.C.Types.CTime
                          }
 
-mk_poll_node :: (FilePath,Bool,Foreign.C.Types.CTime) -> PollNode
-mk_poll_node (p,b,e) = PollNode p b e
+instance Eq PollNode where
+    (==) a b = file_name a == file_name b
+    (/=) a b = not $ a == b
+
+-- Creates a PollNode with the name, isDirectory, and the modification time.
+mk_poll_node :: (FilePath,Foreign.C.Types.CTime) -> PollNode
+mk_poll_node (p,e) = PollNode p e
 
 main :: IO ()
 main = do
     args <- getArgs
-    hscp_start_polling (head args)
+    config <- (parse_config . lines) <$> readFile (head args)
+    hscp_start_polling config
 
-hscp_start_polling :: String -> IO ()
-hscp_start_polling config_path = do
-    config <- lines <$> readFile config_path
-    let (user_name,pass,host,dir,clone_dir,poll_int,ignored) 
-            = parse_config config
-    setCurrentDirectory dir
-    cs <- filter_ignored ignored dir
+-- Starts the polling process.
+hscp_start_polling :: (String,String,String,String,String,Int,[String]) -> IO ()
+hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
+    cs <- recurs_dir_conts dir ignored
     ts <- mapM getFileStatus cs
-    let polls = map mk_poll_node $ 
-                zip3 cs (map isDirectory ts) (map modificationTime ts)
+    setCurrentDirectory dir
+    let polls = map mk_poll_node $ zip cs (map modificationTime ts)
     putStrLn "Innitial push!"
-    mapM_ (\p -> if is_directory p 
-                 then let a = file_name p in
-                      system ("scp -r " ++ a ++ " " 
-                              ++ user_name ++ "@" ++ host ++ ":" 
-                              ++ clone_dir ++ a) >> return ()
-                 else let a = file_name p in
-                      system ("scp -r " ++ a ++ " " 
-                              ++ user_name ++ "@" ++ host ++ ":" 
-                              ++ clone_dir ++ a) >> return ()) polls
+    system ("scp -r " ++ dir ++ " " ++ user_name ++ '@':host ++ 
+                 ':':clone_dir) >> return ()
     putStrLn "polling..."
     threadDelay poll_int
-    hscp_poll user_name pass host dir clone_dir poll_int ignored polls
+    hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls)
     
-hscp_poll :: String -> String -> String -> FilePath -> String 
-          -> Int -> [String] -> [PollNode] -> IO ()
-hscp_poll user_name pass host dir clone_dir poll_int ignored polls = do
+hscp_poll :: (String,String,String,String,String,Int,[String],[PollNode]) 
+          -> IO ()
+hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls) = do
     setCurrentDirectory dir
-    cs <- filter_ignored ignored dir
-    ts <- mapM getFileStatus cs
-    let polls' = map mk_poll_node 
-                 $ zip3 cs (map isDirectory ts) (map modificationTime ts)
-    mapM_ (scp_push user_name host clone_dir) $ zip polls polls'
+    cs <- recurs_dir_conts dir ignored
+    polls' <- get_new_polls cs polls
+    mapM_ (attempt_scp_push user_name host clone_dir) $ polls'
     putStrLn "polling..."
     threadDelay poll_int
-    hscp_poll user_name pass host dir clone_dir poll_int ignored polls'
+    hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,map fst polls')
 
 parse_config :: [String] -> (String,String,String,String,String,Int,[String])
-parse_config config = ( drop 5 (head config)
-                      , drop 9 (config!!1)
-                      , drop 5 (config!!2)
-                      , drop 10 (config!!3)
-                      , drop 15 (config!!4)
-                      , read $ drop 13 (config!!5)
-                      , drop 7 config :: [String])
+parse_config config = ( drop 5 (head config)                        -- user_name
+                      , drop 9 (config!!1)                          -- pass
+                      , drop 5 (config!!2)                          -- host
+                      , drop 10 (config!!3)                         -- dir
+                      , drop 15 (config!!4)                         -- clone_dir
+                      , read $ drop 13 (config!!5)                  -- poll_int
+                      , "\\.":"\\.\\.":(drop 7 config :: [String])) -- ignored
 
-filter_ignored :: [String] -> FilePath -> IO [FilePath]
-filter_ignored ignored dir = 
+get_new_polls :: [FilePath] -> [PollNode] -> IO [(PollNode,PollNode)]
+get_new_polls cs polls = do
+    ts <- mapM getFileStatus cs
+    let polls' = map mk_poll_node 
+               $ zip cs (map modificationTime ts)
+    return [(p,fromMaybe (mk_poll_node (file_name p,0)) (find (==p) polls)) 
+                | p <- polls']
+get_filtered_contents :: [String] -> FilePath -> IO [FilePath]
+get_filtered_contents ignored dir = 
     filter (\c -> not $ any (\i -> i =~ c :: Bool) ignored) 
                <$> getDirectoryContents dir
 
-scp_push :: String -> String -> FilePath -> (PollNode,PollNode) -> IO ()
-scp_push user_name host clone_dir (p,p') = 
+recurs_dir_conts :: FilePath -> [String] -> IO [FilePath]
+recurs_dir_conts dir ignored = do
+    setCurrentDirectory dir
+    cs <- get_filtered_contents ignored dir
+    ps <- mapM (\c -> do
+                    let p = dir </> c
+
+                    is_dir <- doesDirectoryExist p
+                    if is_dir
+                    then recurs_dir_conts p ignored
+                    else return [p]) cs
+    return $ concat ps
+
+is_edited :: (PollNode,PollNode) -> Bool
+is_edited (p,p') = not $ edit_time p == edit_time p'
+
+attempt_scp_push :: String -> String -> FilePath -> (PollNode,PollNode) -> IO ()
+attempt_scp_push user_name host clone_dir (p,p') = 
     if edit_time p /= edit_time p' 
-    then if is_directory p 
-         then let a = file_name p in
-              putStrLn ("Change found on dir " ++ a ++ ", pushing!") >>
-              system ("scp -r " ++ a ++ " " ++ user_name ++ '@':host ++ 
-                      ':':clone_dir ++ a) >> return ()
-         else let a = file_name p in
-              putStrLn ("Change found on file " ++ a ++ ", pushing!") >>
-              system ("scp -r " ++ a ++ " " ++ user_name ++ '@':host ++ 
-                      ':':clone_dir ++ a) >> return ()
-    else putStrLn $ "No edits found on " ++ file_name p ++ " this poll!"
+    then let a = file_name p in
+         putStrLn ("Change found on file " ++ a ++ ", pushing!") >>
+         system ("scp " ++ a ++ " " ++ user_name ++ '@':host ++ 
+                 ':':clone_dir </> a) >> return ()
+    else return ()
