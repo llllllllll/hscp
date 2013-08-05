@@ -37,19 +37,14 @@ main :: IO ()
 main = do
     args <- getArgs
     config <- (parse_config . lines) <$> readFile (head args)
-    forkProcess $ hscp_start_polling config
-    exitImmediately ExitSuccess
+    hscp_start_polling config
     
-
 -- Starts the polling process. 
 hscp_start_polling :: (String,String,String,String,String,Int,[String]) -> IO ()
 hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
-    setFileCreationMask 0
-    createSession
-    setCurrentDirectory "/"
-    hClose stdout >> hClose stdin >> hClose stderr
     cs <- recurs_dir_conts dir ignored
     ts <- mapM B.readFile cs
+    setCurrentDirectory dir
     let polls = map mk_poll_node $ zip cs (map md5 ts)
     putStrLn "Initial push!"
     system ("scp -r " ++ dir ++ " " ++ user_name ++ '@':host ++ 
