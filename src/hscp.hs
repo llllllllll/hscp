@@ -39,22 +39,19 @@ main = do
     config <- (parse_config . lines) <$> readFile (head args)
     forkProcess $ hscp_start_polling config
     exitImmediately ExitSuccess
-    
 
 -- Starts the polling process. 
 hscp_start_polling :: (String,String,String,String,String,Int,[String]) -> IO ()
 hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
     setFileCreationMask 0
     createSession
-    setCurrentDirectory "/"
-    hClose stdout >> hClose stdin >> hClose stderr
+    setCurrentDirectory dir
+   -- hClose stdout >> hClose stdin >> hClose stderr
     cs <- recurs_dir_conts dir ignored
     ts <- mapM B.readFile cs
     let polls = map mk_poll_node $ zip cs (map md5 ts)
-    putStrLn "Initial push!"
     system ("scp -r " ++ dir ++ " " ++ user_name ++ '@':host ++ 
             ':':clone_dir) >> return ()
-    putStrLn "Starting to poll..."
     threadDelay poll_int
     hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls)
 
@@ -62,6 +59,7 @@ hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
 hscp_poll :: (String,String,String,String,String,Int,[String],[PollNode]) 
           -> IO ()
 hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls) = do
+    setCurrentDirectory dir
     cs <- recurs_dir_conts dir ignored
     polls' <- get_new_polls cs polls
     mapM_ (attempt_scp_push user_name host clone_dir) $ polls'
@@ -111,7 +109,7 @@ attempt_scp_push :: String -> String -> FilePath -> (PollNode,PollNode) -> IO ()
 attempt_scp_push user_name host clone_dir (p,p') = 
     if file_hash p /= file_hash p' -- Need to fix.
     then let a = file_name p in
-         putStrLn ("Change found on file " ++ a ++ ", pushing!") >>
+         putStrLn "test" >> 
          system ("scp " ++ a ++ " " ++ user_name ++ '@':host ++ 
                  ':':clone_dir </> a) >> return ()
-    else return ()
+    else return () 
