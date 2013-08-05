@@ -1,5 +1,5 @@
 -- Copyright (c) 2013, Joe Jevnik
--- hscp version 1.0 8.2.2013
+-- hscp version 1.0 8.2.2013 -- master
 import System.Environment
 import System.Directory
 import System.Process
