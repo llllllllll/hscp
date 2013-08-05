@@ -1,3 +1,4 @@
+
 -- Copyright (c) 2013, Joe Jevnik
 -- hscp version 1.0 8.2.2013
 import System.Environment
@@ -45,10 +46,10 @@ hscp_start_polling :: (String,String,String,String,String,Int,[String]) -> IO ()
 hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
     setFileCreationMask 0
     createSession
-    setCurrentDirectory dir
-   -- hClose stdout >> hClose stdin >> hClose stderr
+    hClose stdout >> hClose stdin >> hClose stderr
     cs <- recurs_dir_conts dir ignored
     ts <- mapM B.readFile cs
+    setCurrentDirectory dir
     let polls = map mk_poll_node $ zip cs (map md5 ts)
     system ("scp -r " ++ dir ++ " " ++ user_name ++ '@':host ++ 
             ':':clone_dir) >> return ()
@@ -109,7 +110,6 @@ attempt_scp_push :: String -> String -> FilePath -> (PollNode,PollNode) -> IO ()
 attempt_scp_push user_name host clone_dir (p,p') = 
     if file_hash p /= file_hash p' -- Need to fix.
     then let a = file_name p in
-         putStrLn "test" >> 
-         system ("scp " ++ a ++ " " ++ user_name ++ '@':host ++ 
+         system ("scp " ++ a ++ " " ++ user_name ++ '@':host ++
                  ':':clone_dir </> a) >> return ()
     else return () 
