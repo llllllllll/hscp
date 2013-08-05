@@ -59,21 +59,19 @@ hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls) = do
     setCurrentDirectory dir
     cs <- recurs_dir_conts dir ignored
     polls' <- get_new_polls cs polls
-    mapM_ (\(p,p') -> print (file_name p,edit_time p,edit_time p')) polls' -- Testing
     mapM_ (attempt_scp_push user_name host clone_dir) $ polls'
-    putStrLn "polling..."
     threadDelay poll_int
     hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,map fst polls')
 
 -- Parses the config files lines into their fields.
 parse_config :: [String] -> (String,String,String,String,String,Int,[String])
-parse_config config = ( drop 5 (head config)                        -- user_name
-                      , drop 9 (config!!1)                          -- pass
-                      , drop 5 (config!!2)                          -- host
-                      , drop 10 (config!!3)                         -- dir
-                      , drop 15 (config!!4)                         -- clone_dir
-                      , read $ drop 13 (config!!5)                  -- poll_int
-                      , "\\.":"\\.\\.":(drop 7 config :: [String])) -- ignored
+parse_config config = ( drop 5 (head config)                           -- user_name
+                      , drop 9 (config!!1)                             -- pass
+                      , drop 5 (config!!2)                             -- host
+                      , drop 10 (config!!3)                            -- dir
+                      , drop 15 (config!!4)                            -- clone_dir
+                      , read $ drop 13 (config!!5)                     -- poll_int
+                      , "^\\.$":"^\\.\\.$":(drop 7 config :: [String]))-- ignored
 
 -- Gets a list of [New PollNode,Old PollNode) to be used to check the times.
 get_new_polls :: [FilePath] -> [PollNode] -> IO [(PollNode,PollNode)]
@@ -86,7 +84,7 @@ get_new_polls cs polls = do
 -- Gets the contents of dir that do not match any of the regex in ignored.
 get_filtered_contents :: [String] -> FilePath -> IO [FilePath]
 get_filtered_contents ignored dir = 
-    filter (\c -> not $ any (\i -> i =~ c :: Bool) ignored) 
+    filter (\c -> not $ any (\i -> c =~ i :: Bool) ignored) 
                <$> getDirectoryContents dir
 
 -- Gets the recursive contents of dir that do not match any of the 
