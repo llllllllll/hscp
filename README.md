@@ -11,15 +11,15 @@ Configuring
 
 In the template, there is:
 - User:           -- The username you would use for scp.
-- Password:       -- The password for scp.
+- Password:       -- The password for scp. (not functioning)
 - Host:           -- The host for scp.
-- Directory:      -- The directory to watch (must end in '/').
-- CloneDirectory: -- The directory to clone to (must end in '/' and exist).
+- Directory:      -- The directory to watch.
+- CloneDirectory: -- The directory to clone to (must exist).
 - PollInterval    -- The polling delay in microseconds.
 
 Everything below this line is ignored (leave "." and ".."). 
 Currently you need to have an ssh key and the password field does not work. 
-.config is included as an example configuration.
+A .config is included as an example configuration.
 
 
 Starting
@@ -29,15 +29,13 @@ Launch it with
  
     $ hscp path_to_config
 
+The config must be setup properly for this to work, or it will error on runtime.
 Currently you must stop polling with ^c, but the terminal will print the scp out
-and other useful information. Currently, it does not push the source directory at
-startup, so you need to edit all the files in the directory for them to get 
-pushed.
+and other useful information.
 
 
 TODO
 ----
 
-- Get directories working properly
-- Fix emacs file buffers causing crashes (probably with regex ignores)
+- Make innitial push respect the ignored regex list
 - Possibly add printing options with a -v or --verbose flag
