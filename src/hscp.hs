@@ -5,6 +5,7 @@ import System.Directory
 import System.Process
 import System.FilePath
 import System.Posix.Process
+import System.Posix.Files
 import System.Exit
 import System.IO
 import Control.Concurrent
@@ -31,19 +32,24 @@ instance Eq PollNode where
 mk_poll_node :: (FilePath,MD5Digest) -> PollNode
 mk_poll_node (p,e) = PollNode p e
 
--- Parses args and begins polling.
+-- Parses args and starts the hscp-daemon
 main :: IO ()
 main = do
     args <- getArgs
     config <- (parse_config . lines) <$> readFile (head args)
-    hscp_start_polling config
+    forkProcess $ hscp_start_polling config
+    exitImmediately ExitSuccess
+    
 
 -- Starts the polling process. 
 hscp_start_polling :: (String,String,String,String,String,Int,[String]) -> IO ()
 hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
+    setFileCreationMask 0
+    createSession
+    setCurrentDirectory "/"
+    hClose stdout >> hClose stdin >> hClose stderr
     cs <- recurs_dir_conts dir ignored
     ts <- mapM B.readFile cs
-    setCurrentDirectory dir
     let polls = map mk_poll_node $ zip cs (map md5 ts)
     putStrLn "Initial push!"
     system ("scp -r " ++ dir ++ " " ++ user_name ++ '@':host ++ 
@@ -56,7 +62,6 @@ hscp_start_polling (user_name,pass,host,dir,clone_dir,poll_int,ignored) = do
 hscp_poll :: (String,String,String,String,String,Int,[String],[PollNode]) 
           -> IO ()
 hscp_poll (user_name,pass,host,dir,clone_dir,poll_int,ignored,polls) = do
-    setCurrentDirectory dir
     cs <- recurs_dir_conts dir ignored
     polls' <- get_new_polls cs polls
     mapM_ (attempt_scp_push user_name host clone_dir) $ polls'
